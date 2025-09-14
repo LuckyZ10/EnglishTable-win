@@ -35,7 +35,8 @@ const cancelPasswordBtn = document.getElementById('cancel-password');
 const confirmPasswordBtn = document.getElementById('confirm-password');
 
 // API配置
-const API_BASE_URL = 'http://localhost:5000/api';
+// 从配置文件中获取API地址
+const API_BASE_URL = window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000/api';
 
 // 显示加载中模态框
 function showLoading(message = '处理中...') {

@@ -74,7 +74,13 @@ echo "前端服务已启动，PID: $FRONTEND_PID，日志文件: logs/frontend.l
 echo "\n服务状态信息："
 echo "后端服务：已在后台启动（端口5000）"
 echo "前端服务：已在后台启动（端口8000）"
-echo "\n访问地址：http://localhost:8000"
+
+# 获取服务器IP地址
+SERVER_IP=$(hostname -I | awk '{print $1}')
+echo "\n访问地址："
+echo "- 本地访问：http://localhost:8000"
+echo "- 从其他设备访问：http://$SERVER_IP:8000"
+echo "  （请确保服务器的防火墙已开放8000端口）"
 echo "\n查看后端日志：tail -f logs/backend.log"
 echo "查看前端日志：tail -f logs/frontend.log"
 echo "\n停止服务命令："

@@ -38,9 +38,18 @@
    - 在后台启动前端服务（端口8000）
 
 3. 服务启动后，可以通过以下地址访问应用：
-   ```
-   http://localhost:8000
-   ```
+   - 在服务器本地访问：
+     ```
+     http://localhost:8000
+     ```
+   - 从其他设备访问服务器上的应用：
+     ```
+     http://服务器公网IP:8000
+     # 或
+     http://域名:8000
+     ```
+   
+   注意：从其他设备访问时，确保服务器的防火墙已开放8000端口。
 
 ## 手动部署步骤
 
@@ -131,18 +140,7 @@ ps aux | grep "python3 serve.py" | grep -v grep | awk '{print $2}' | xargs kill
 
 ### 使用PM2管理Node.js服务（推荐）
 
-对于生产环境，推荐使用PM2来管理Node.js服务：
-
-```bash
-# 安装PM2
-npm install -g pm2
-
-# 使用PM2启动后端服务
-cd backend
-pm install
-pm install -g pm2
-pm run dev
-```
+对于生产环境，推荐使用PM2来管理Node.js服务，它可以自动重启服务、监控性能并提供更好的进程管理。
 
 ## 端口配置
 
