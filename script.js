@@ -34,112 +34,35 @@ const adminPasswordInput = document.getElementById('admin-password');
 const cancelPasswordBtn = document.getElementById('cancel-password');
 const confirmPasswordBtn = document.getElementById('confirm-password');
 
-// IndexedDB配置
-const DB_NAME = 'EnglishStudyDB';
-const DB_VERSION = 1;
-const STORES = {
-  CONFIG: 'config',
-  RECORDS: 'records'
-};
+// API配置
+const API_BASE_URL = 'http://localhost:5000/api';
 
-// 打开IndexedDB数据库
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      
-      // 创建配置存储
-      if (!db.objectStoreNames.contains(STORES.CONFIG)) {
-        db.createObjectStore(STORES.CONFIG);
-      }
-      
-      // 创建学习记录存储，并设置id索引
-      if (!db.objectStoreNames.contains(STORES.RECORDS)) {
-        const recordsStore = db.createObjectStore(STORES.RECORDS, { keyPath: 'id' });
-        recordsStore.createIndex('timestamp', 'timestamp', { unique: false });
-      }
-    };
-
-    request.onsuccess = (event) => {
-      resolve(event.target.result);
-    };
-
-    request.onerror = (event) => {
-      reject(event.target.error);
-    };
-  });
+// 显示加载中模态框
+function showLoading(message = '处理中...') {
+  loadingMessage.textContent = message;
+  loadingModal.classList.remove('hidden');
 }
 
-// 从IndexedDB获取数据
-async function getFromDB(storeName, key) {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(storeName, 'readonly');
-      const store = transaction.objectStore(storeName);
-      const request = store.get(key);
-
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-
-      request.onerror = () => {
-        reject(request.error);
-      };
-    });
-  } catch (error) {
-    console.error(`从${storeName}获取数据失败:`, error);
-    return null;
-  }
+// 隐藏加载中模态框
+function hideLoading() {
+  loadingModal.classList.add('hidden');
 }
 
-// 保存数据到IndexedDB
-async function saveToDB(storeName, key, value) {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(storeName, 'readwrite');
-      const store = transaction.objectStore(storeName);
-      // 对于使用内联键的存储（如RECORDS），不应该提供key参数
-      const request = store.put(value);
-
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-
-      request.onerror = () => {
-        reject(request.error);
-      };
-    });
-  } catch (error) {
-    console.error(`保存数据到${storeName}失败:`, error);
-    throw error;
-  }
+// 显示提示框
+function showToast(type, message) {
+  toastIcon.className = `fa ${type === 'success' ? 'fa-check-circle' : 'fa-times-circle'} ${type === 'success' ? 'text-green-500' : 'text-red-500'}`;
+  toastMessage.textContent = message;
+  toast.classList.remove('hidden');
+  setTimeout(() => {
+    toast.classList.add('hidden');
+  }, 3000);
 }
 
-// 获取所有记录
-async function getAllFromDB(storeName) {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(storeName, 'readonly');
-      const store = transaction.objectStore(storeName);
-      const request = store.getAll();
-
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-
-      request.onerror = () => {
-        reject(request.error);
-      };
-    });
-  } catch (error) {
-    console.error(`获取${storeName}所有数据失败:`, error);
-    return [];
-  }
+// 转义HTML特殊字符
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 // 应用配置和记录
@@ -172,7 +95,7 @@ async function initApp() {
   };
   
   console.log('加载配置和记录...');
-  // 从IndexedDB加载配置和记录
+  // 从后端API加载配置和记录
   await loadConfig();
   await loadStudyRecords();
   
@@ -201,11 +124,12 @@ async function initApp() {
   setTimeout(addTestTranslationButton, 1000);
 }
 
-// 从IndexedDB加载配置
+// 从后端API加载配置
 async function loadConfig() {
   try {
-    const savedConfig = await getFromDB(STORES.CONFIG, 'translationConfig');
-    if (savedConfig) {
+    const response = await fetch(`${API_BASE_URL}/config`);
+    if (response.ok) {
+      const savedConfig = await response.json();
       appConfig = { ...appConfig, ...savedConfig };
       
       // 应用加载的配置到表单
@@ -216,55 +140,87 @@ async function loadConfig() {
     }
   } catch (error) {
     console.error('加载配置失败:', error);
+    showToast('error', '加载配置失败，请检查后端服务是否运行');
   }
 }
 
-// 保存配置到IndexedDB
+// 保存配置到后端API
 async function saveConfig() {
   try {
-    await saveToDB(STORES.CONFIG, 'translationConfig', appConfig);
+    const config = {
+      provider: appConfig.provider,
+      key: appConfig.key,
+      userRole: appConfig.userRole,
+      deepseekModelType: appConfig.deepseekModelType,
+      theme: appConfig.darkMode ? 'dark' : 'light'
+    };
+    
+    const response = await fetch(`${API_BASE_URL}/config`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(config)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`保存配置失败: ${response.status}`);
+    }
+    
+    await response.json();
   } catch (error) {
     console.error('保存配置失败:', error);
+    throw error;
   }
 }
 
-// 从IndexedDB加载学习记录
+// 从后端API加载学习记录
 async function loadStudyRecords() {
   try {
-    const savedRecords = await getAllFromDB(STORES.RECORDS);
-    if (savedRecords && savedRecords.length > 0) {
-      studyRecords = savedRecords;
+    const response = await fetch(`${API_BASE_URL}/records`);
+    if (!response.ok) {
+      throw new Error(`获取学习记录失败: ${response.status}`);
+    }
+    const records = await response.json();
+    if (records && records.length > 0) {
+      // 处理MongoDB的_id字段，映射为id字段供前端使用
+      studyRecords = records.map(record => ({
+        ...record,
+        id: record._id
+      })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     }
   } catch (error) {
     console.error('加载学习记录失败:', error);
+    showToast('error', '加载学习记录失败，请检查后端服务是否运行');
   }
 }
 
-// 保存学习记录到IndexedDB
-async function saveStudyRecords() {
+// 保存学习记录到后端API
+async function saveStudyRecords(records = null) {
   try {
-    const db = await openDB();
-    const transaction = db.transaction(STORES.RECORDS, 'readwrite');
-    const store = transaction.objectStore(STORES.RECORDS);
+    // 如果提供了records参数，使用它；否则使用全局studyRecords数组
+    const recordsToSave = records || studyRecords;
     
-    // 先清空现有记录
-    await new Promise((resolve, reject) => {
-      const clearRequest = store.clear();
-      clearRequest.onsuccess = resolve;
-      clearRequest.onerror = reject;
+    const response = await fetch(`${API_BASE_URL}/records/batch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(recordsToSave)
     });
     
-    // 保存所有记录
-    for (const record of studyRecords) {
-      store.put(record);
+    if (!response.ok) {
+      throw new Error(`保存学习记录失败: ${response.status}`);
     }
     
-    await new Promise((resolve, reject) => {
-      transaction.oncomplete = resolve;
-      transaction.onerror = reject;
-    });
+    await response.json();
   } catch (error) {
     console.error('保存学习记录失败:', error);
+    // 检查是否是后端服务问题
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      showToast('error', '保存学习记录失败：无法连接到后端服务，请检查服务是否正常运行。');
+    }
+    throw error;
   }
 }
 
@@ -305,13 +261,13 @@ async function removeDuplicateRecords() {
     }
     
     // 更新studyRecords数组为去重后的记录
-    studyRecords = Array.from(uniqueRecordsMap.values());
-    
-    // 保存去重后的记录到IndexedDB
-    await saveStudyRecords();
-    
-    // 刷新记录列表
-    renderRecordsTable();
+      studyRecords = Array.from(uniqueRecordsMap.values());
+      
+      // 保存去重后的记录到后端API
+      await saveStudyRecords();
+      
+      // 刷新记录列表
+      renderStudyRecords();
     
     // 显示成功提示
     showToast('success', `成功删除 ${duplicatesCount} 条重复记录`);
@@ -474,24 +430,38 @@ function editRecord(recordId) {
   addRecordBtn.innerHTML = '<i class="fa fa-check mr-2"></i>更新记录';
 }
 
-// 删除记录
+// 删除记录 - 直接调用后端API删除单个记录
 function deleteRecord(recordId) {
   // 移除权限检查，所有用户都可以删除记录
   
   if (confirm('确定要删除这条学习记录吗？')) {
-    // 过滤掉要删除的记录 - 使用宽松相等比较，处理ID类型不匹配问题
-    studyRecords = studyRecords.filter(r => r.id != recordId);
+    showLoading('正在删除记录...');
     
-    // 保存更新后的记录
-    saveStudyRecords().then(() => {
+    // 直接调用后端API删除单个记录
+    fetch(`${API_BASE_URL}/records/${recordId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`删除记录失败: ${response.status}`);
+      }
+      return response.json();
+    }).then(data => {
+      // 从本地数组中移除记录
+      studyRecords = studyRecords.filter(r => r.id != recordId);
+      
       // 重新渲染记录
       renderStudyRecords();
       
       // 显示成功提示
       showToast('success', '学习记录已删除');
     }).catch(error => {
-      console.error('保存删除结果失败:', error);
+      console.error('删除记录失败:', error);
       showToast('error', '删除记录失败');
+    }).finally(() => {
+      hideLoading();
     });
   }
 }
@@ -571,7 +541,7 @@ async function handleImport() {
       return;
     }
     
-    // 导入记录到IndexedDB
+    // 准备新记录数据
     const newRecords = records.map((record, index) => ({
       id: `import_${Date.now()}_${index}`, // 使用更唯一的ID生成方式
       word: record['单词/句子'] || record.word || '',
@@ -582,16 +552,13 @@ async function handleImport() {
     }));
     
     // 检查并过滤重复记录（基于单词和翻译的组合）
-    const existingRecords = await getAllFromDB(STORES.RECORDS);
     const recordsMap = new Map();
     
     // 先添加现有记录到映射中用于去重
-    if (existingRecords && existingRecords.length > 0) {
-      existingRecords.forEach(record => {
-        const key = `${record.word.trim().toLowerCase()}_${record.translation.trim().toLowerCase()}`;
-        recordsMap.set(key, record);
-      });
-    }
+    studyRecords.forEach(record => {
+      const key = `${record.word.trim().toLowerCase()}_${record.translation.trim().toLowerCase()}`;
+      recordsMap.set(key, record);
+    });
     
     // 过滤出新的不重复的记录
     const uniqueNewRecords = [];
@@ -611,25 +578,13 @@ async function handleImport() {
       return;
     }
     
-    // 保存不重复的新记录到IndexedDB
-    const db = await openDB();
-    const transaction = db.transaction(STORES.RECORDS, 'readwrite');
-    const store = transaction.objectStore(STORES.RECORDS);
+    // 合并现有记录和新记录
+    const allRecords = [...studyRecords, ...uniqueNewRecords];
     
-    for (const record of uniqueNewRecords) {
-      await new Promise((resolve, reject) => {
-        const request = store.put(record);
-        request.onsuccess = resolve;
-        request.onerror = reject;
-      });
-    }
+    // 保存所有记录到后端API
+    await saveStudyRecords(allRecords);
     
-    await new Promise((resolve, reject) => {
-      transaction.oncomplete = resolve;
-      transaction.onerror = reject;
-    });
-    
-    // 刷新记录列表
+    // 重新加载学习记录以确保数据最新
     await loadStudyRecords();
     
     // 隐藏模态框
@@ -640,6 +595,10 @@ async function handleImport() {
   } catch (error) {
     console.error('导入失败:', error);
     showToast('error', '导入失败：' + error.message);
+    // 检查是否是后端服务问题
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      showToast('error', '导入失败：无法连接到后端服务，请检查服务是否正常运行。');
+    }
   } finally {
     hideLoading();
   }
@@ -1037,7 +996,7 @@ exportBtn.addEventListener('click', showExportModal);
     
     // 处理删除按钮点击
     if (e.target.closest('.delete-record')) {
-      const id = parseInt(e.target.closest('.delete-record').closest('tr').dataset.id);
+      const id = e.target.closest('.delete-record').closest('tr').dataset.id; // 保留ID为字符串格式
       deleteRecord(id); // 移除await，避免确认对话框问题
       return;
     }
